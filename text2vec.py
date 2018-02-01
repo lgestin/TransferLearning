@@ -4,11 +4,13 @@ from nltk.stem import SnowballStemmer
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from sklearn.feature_extraction.text import CountVectorizer
+import matplotlib.pyplot as plt
 
 
 stemmer = SnowballStemmer('english')
-
+print('Loading ...', end = ' ')
 df = pd.read_json('BD_first_thousand_lines.txt', lines=True)
+print('Done')
 
 emoticons_str = r"""
           (?:
@@ -21,6 +23,10 @@ emoticons_str = r"""
 emoticon_re = re.compile(r'^'+emoticons_str+'$', re.VERBOSE)
 
 def is_emoji(s, emoticon_re=emoticon_re):
+    ''''check if s is an emoticon or not
+    s:string
+    emoticon_re:regex
+    '''
     if re.findall(emoticon_re, s) == []:
         return False
     else:
@@ -51,8 +57,19 @@ def textPreprocessing(string, stemmer, charToKeep = string.ascii_lowercase, sWor
 
     return ' '.join(new_string)
 
+print('Stemming...', end = ' ')
 df['reviewTextStemmed'] = df['reviewText'].apply(lambda x: textPreprocessing(x, stemmer))
+print('Done')
 
-cv = CountVectorizer(analyzer='word')
-cv.fit(list(df['reviewTextStemmed']))
-bow = cv.transform(list(df['reviewTextStemmed'])).todense()
+l = []
+for i in range(1000, 10000, 100):
+    cv = CountVectorizer(analyzer='word', min_df = 1, max_df = 10000)
+    cv.fit(list(df['reviewTextStemmed'][:i]))
+    l += [len(cv.vocabulary_)]
+
+#bow = cv.transform(list(df['reviewTextStemmed'])).todense()
+
+plt.plot(list(range(1000,10000,100),l)
+plt.title('Evolution de la taille du vocabulaire\nen fonction du nombre de lignes prises')
+plt.xlabel('Nb de ligne')
+plt.ylabel('Taille du vocabulaire')
