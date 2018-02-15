@@ -1,1 +1,6 @@
 BD_*
+*.txt
+*.csv
+test.py
+w2v/
+__pycche__/
