@@ -1,6 +1,7 @@
-BD_*
 *.txt
 *.csv
+*.json
 test.py
 w2v/
-__pycche__/
+__pycache__/
+tweets-data/

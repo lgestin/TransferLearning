@@ -8,11 +8,11 @@ from text2vec import textPreprocessing
 
 stemmer = SnowballStemmer('english')
 
-n_lines = 350000
+n_lines = 50000
 data = np.empty((n_lines, 2), dtype='object')
 
-n_neg = int(.4*n_lines)
-n_pos = int(.4*n_lines)
+n_neg = int(.4 * n_lines)
+n_pos = int(.4 * n_lines)
 n_2 = int(.1*n_lines)
 n_4 = int(.1*n_lines)
 
@@ -53,4 +53,4 @@ with open('BD_partielle.csv', 'w') as fout:
                     n4 += 1
 
 df = pd.DataFrame(data, columns=['overall', 'reviewTextStemmed'])
-df[~df['reviewTextStemmed'].isnull()].to_csv('balanced_stemmed_amazon_350k.csv', sep='\t', index=False)
+df[~df['reviewTextStemmed'].isnull()].to_csv('balanced_stemmed_amazon_50k.csv', sep='\t', index=False)

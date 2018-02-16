@@ -3,7 +3,6 @@ import re
 import pandas as pd
 from nltk.stem import SnowballStemmer
 from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
 from sklearn.feature_extraction.text import CountVectorizer
 import matplotlib.pyplot as plt
 
@@ -15,7 +14,7 @@ emoticons_str = r"""
               )"""
 
 
-emoticon_re = re.compile(r'^'+emoticons_str+'$', re.VERBOSE)
+emoticon_re = re.compile(r'^' + emoticons_str + '$', re.VERBOSE)
 
 
 def is_emoji(s, emoticon_re=emoticon_re):
@@ -36,7 +35,7 @@ def textPreprocessing(string, stemmer, charToKeep=string.ascii_lowercase, sWords
     charToKeep: string containing all the chars to char to keep
     sWords: stop words
     '''
-    string = string.lower()
+    string = string.lower().replace('.', ' ')
     new_string = []
     for word in string.split(' '):
         if word not in sWords:
@@ -58,7 +57,7 @@ if __name__ == '__main__':
 
     stemmer = SnowballStemmer('english')
     print('Loading ...', end=' ')
-    df = pd.read_json('BD_first_thousand_lines.txt', lines=True)[:2000]
+    df = pd.read_json('BD_first_thousand_lines.txt', lines=True)
     print('Done')
 
     print('Stemming...', end=' ')
@@ -68,7 +67,7 @@ if __name__ == '__main__':
     print('Saving new dataframe...', end=' ')
     df.reset_index().to_json('BD_first_ten_lines_stemmed.json', orient='records', lines=True)
     print('Done')
-
+    pd.read_csv()
     # l = []
     # for i in range(1000, 10000, 100):
     # cv = CountVectorizer(analyzer='word', min_df = 1, max_df = 10000)

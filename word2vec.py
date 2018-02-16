@@ -7,14 +7,14 @@ from torch.autograd import Variable
 import pdb
 from torch.nn.init import xavier_uniform
 
-df = pd.read_csv('balanced_stemmed_amazon_350k.csv', sep='\t')
+df = pd.read_csv('balanced_stemmed_amazon_50k.csv', sep='\t')
 df = df[~df['reviewTextStemmed'].isnull()]
 
-w2v_size = 2*4**4
+w2v_size = 4**4
 
 print('Fitting Word2Vec...', end=' ')
 w2v = Word2Vec([x.split(' ') for x in df['reviewTextStemmed'].values],
-               size=w2v_size, window=7, min_count=0, workers=4, iter=10)
+               size=w2v_size, window=5, min_count=25, workers=4, iter=10)
 print('Done')
 
 
@@ -37,12 +37,13 @@ class FCNet(torch.nn.Module):
 
 
 class AmazonText(Dataset):
-    def __init__(self, w2v):
+    def __init__(self, w2v, path='balanced_stemmed_amazon_50k.csv'):
         super(AmazonText, self).__init__()
         self.w2v = w2v
-        self.df = pd.read_csv('balanced_stemmed_amazon_350k.csv', sep='\t')
+        self.df = pd.read_csv(path, sep='\t')
         self.df = self.df[~self.df['reviewTextStemmed'].isnull()]
         self.text = df['reviewTextStemmed'].values
+        self.text = self.text[2000:]
         self.labels = df['overall'].apply(lambda x: 0. if x <= 2.5 else 1.).values
         self.tfidf = TfidfVectorizer(
             min_df=0, lowercase=False, token_pattern=r"([^\s]+|[:=;][o0\-]?[D\)\]\(\]/\\OpP])").fit(self.text)
@@ -54,12 +55,9 @@ class AmazonText(Dataset):
         t = self.text[idx]
         label = self.labels[idx]
         output = torch.zeros(w2v_size)
-        # pdb.set_trace()
         l_t = t.split(' ')
         tfidf_t = self.tfidf.transform([t])
-        # print(tfidf_t.shape)
         tfidfs = []
-        # print(l_t)
         for i, word in enumerate(l_t):
             try:
                 if len(word) > 1:
@@ -67,12 +65,16 @@ class AmazonText(Dataset):
                 else:
                     tfidfs += [0.]
             except KeyError:
-                print(word, len(word))
+                pass
         for i, word in enumerate(t.split(' ')):
-            if len(word) > 1:
-                output += torch.Tensor(self.w2v.wv[word])*torch.Tensor([tfidfs[i]])
-        # output = output.view(1, -1)
-        dic = {'w2v': output/torch.norm(output), 'label': torch.Tensor([label])}
+            try:
+                if len(word) > 1:
+                    output += torch.Tensor(self.w2v.wv[word])*torch.Tensor([tfidfs[i]])
+            except KeyError:
+                pass
+        if torch.sum(output) != 0:
+            output = output/torch.norm(output)
+        dic = {'w2v': output, 'label': torch.Tensor([label]), 'text': t}
         return dic
 
 
@@ -97,23 +99,28 @@ if __name__ == '__main__':
     dl_train = DataLoader(at, batch_size=64, shuffle=False, num_workers=4, sampler=train_sampler)
     dl_test = DataLoader(at, batch_size=len(test_sampler_id),
                          shuffle=False, num_workers=4, sampler=test_sampler)
+    dl_test = DataLoader(AmazonText(w2v=w2v, path='BD_first_thousand_lines.csv'), batch_size=2000)
 
     fcn = FCNet(w2v_size).cuda()
 
+    dl = DataLoader(at, batch_size=64, num_workers=4, shuffle=True)
     sgd = SGD(params=fcn.parameters(), lr=.9, momentum=.8)
-    rms = RMSprop(params=fcn.parameters(), lr=.0008, momentum=.2)
+    rms = RMSprop(params=fcn.parameters(), lr=.0005, momentum=.5)
     loss = MSELoss()
     loss_track = []
     for epoch in range(20):
-        for i, data in enumerate(dl_train):
-            sgd.zero_grad()
+        for i, data in enumerate(dl):
+            rms.zero_grad()
             x = Variable(data['w2v']).cuda()
             y = Variable(data['label']).cuda()
+            t = data['text']
             y_hat = fcn(x)
             los = loss(y_hat, y)
             los.backward()
             loss_track += [los.data[0]]
-            sgd.step()
+            rms.step()
+            if i % 999 == 1000:
+                print(np.mean(loss_track[-100:]))
         data = next(iter(dl_test))
         x = Variable(data['w2v']).cuda()
         y = data['label'].numpy()
