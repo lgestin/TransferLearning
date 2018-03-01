@@ -2,12 +2,9 @@ import torch
 from gensim.models import Word2Vec
 import pandas as pd
 import numpy as np
-from torch.utils.data import DataLoader, Dataset
-from sklearn.feature_extraction.text import TfidfVectorizer
+from torch.utils.data import DataLoader
 from torch.autograd import Variable
 import pdb
-from torch.nn.init import xavier_uniform
-from sklearn.metrics import classification_report
 
 
 class RNNet(torch.nn.Module):
@@ -18,6 +15,9 @@ class RNNet(torch.nn.Module):
         self.lstm1 = torch.nn.LSTM(self.input_size, self.hidden_size // 2, bidirectional=True)
         self.lstm2 = torch.nn.LSTM(self.hidden_size, self.hidden_size)
         self.fc1 = torch.nn.Linear(self.hidden_size, 1)
+
+        # self.d1 = torch.nn.Dropout(p=0.5)
+        # self.d2 = torch.nn.Dropout(p=0.5)
 
         for name, param in self.named_parameters():
             if 'weight' in name:
@@ -32,12 +32,14 @@ class RNNet(torch.nn.Module):
         if hidden_states is None:
             hidden_states = self.init_hidden(batch_size)
         x, hidden_state_1 = self.lstm1(x, hidden_states[0])
+        # x = self.d1(x)
         x, hidden_state_2 = self.lstm2(x, hidden_states[1])
+        # x = self.d2(x)
         x = torch.nn.functional.sigmoid(self.fc1(x[-30:, :, :]))
         return x
 
 
-def evaluate(model, dataloader, loss):
+def evaluate(model, dataloader, loss, verbose=1):
     acc = []
     loss_track = []
     tp, tn, fp, fn = 0, 0, 0, 0
@@ -53,6 +55,9 @@ def evaluate(model, dataloader, loss):
         tn += sum((1-y)*(1-y_hat))
         fp += sum((1-y)*y_hat)
         fn += sum(y*(1-y_hat))
+        if i % dataloader.batch_size * int(len(dataloader)/10) == dataloader.batch_size * int(len(dataloader)/10)-1 and verbose == 1:
+            print('loss: {0:.6f} accuracy: {1:.6f} tp/(tp+fn): {2:.6f} tn/(tn+fp): {3:.6f}'.format(np.mean(loss_track), np.mean(acc), tp/(tp+fn), tn/(tn+fp)), end='\r')
+
     print('loss: {0:.6f} accuracy: {1:.6f} tp/(tp+fn): {2:.6f} tn/(tn+fp): {3:.6f}'.format(np.mean(loss_track), np.mean(acc), tp/(tp+fn), tn/(tn+fp)))
     return np.mean(loss_track), np.mean(acc)
 
@@ -60,8 +65,8 @@ def evaluate(model, dataloader, loss):
 if __name__ == '__main__':
     from torch.optim import SGD, RMSprop, Adam
     from torch.nn import BCELoss, MSELoss
+    from torch.optim.lr_scheduler import StepLR
     import matplotlib.pyplot as plt
-    from torch.utils.data.sampler import SubsetRandomSampler
     from utils import AmazonTextRecurrent
 
     plt.ion()
@@ -73,7 +78,7 @@ if __name__ == '__main__':
     w2v_size = 4**4
     max_len = 300
     n_epoch = 10
-    n_hidden = 128
+    n_hidden = 160
 
     # Word2Vec
     w2v_path = 'models/w2v_500k.model'
@@ -89,16 +94,18 @@ if __name__ == '__main__':
     at = AmazonTextRecurrent(w2v=w2v, max_len=max_len)
     dl = DataLoader(at, batch_size=64, num_workers=4, shuffle=True)
     dl_test = DataLoader(AmazonTextRecurrent(
-        w2v=w2v, path='stemmed_amazon_500k_test.csv', max_len=max_len), batch_size=256)
+        w2v=w2v, path='stemmed_amazon_500k_test.csv', max_len=max_len), batch_size=64)
 
     rnn = RNNet(w2v_size, n_hidden).cuda()
 
     # sgd = SGD(params=rnn.parameters(), lr=.9, momentum=.8)
     # rms = RMSprop(params=rnn.parameters(), lr=.0003, momentum=.5)
     adam = Adam(params=rnn.parameters())
+    scheduler = StepLR(adam, 1, gamma=0.4)
     loss = MSELoss()
     loss_track = []
     for epoch in range(n_epoch):
+        rnn.train()
         for i, data in enumerate(dl):
             adam.zero_grad()
             x = Variable(data['w2v']).permute(1, 0, 2).cuda()
@@ -108,7 +115,9 @@ if __name__ == '__main__':
             los.backward()
             adam.step()
             loss_track += [los.data[0]]
-            if i % 1000 == 990:
+            if i % 1000 == 999:
                 print(np.mean(loss_track[-1000:]), end='\r')
         print('Epoch {} -'.format(epoch), end=' ')
-        evaluate(rnn, dl_test, loss)
+        rnn.eval()
+        evaluate(rnn, dl_test, loss, verbose=0)
+        scheduler.step()
