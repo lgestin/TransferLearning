@@ -10,8 +10,8 @@ class AmazonText(Dataset):
         super(AmazonText, self).__init__()
         self.w2v = w2v
         self.df = pd.read_csv(path, sep='\t')
-        self.df = self.df[~self.df['reviewTextStemmed'].isnull()]
-        self.text = self.df['reviewTextStemmed'].values
+        self.df = self.df[~self.df['reviewText'].isnull()]
+        self.text = self.df['reviewText'].values
         self.text = self.text[2000:]
         self.labels = self.df['overall'].apply(
             lambda x: 0. if x <= 2.5 else 1.).values
@@ -32,12 +32,15 @@ class AmazonText(Dataset):
 
 
 class AmazonTextRecurrent(Dataset):
-    def __init__(self, w2v, max_len=None, path='stemmed_amazon_500k_train.csv'):
+    def __init__(self, w2v, max_len=None, path='stemmed_amazon_500k_train.csv', preprocessor=None, stemmer=None):
         super(AmazonTextRecurrent, self).__init__()
+        self.preprocessor = preprocessor
+        self.stemmer = stemmer
         self.w2v = w2v
         self.df = pd.read_csv(path, sep='\t')
-        self.df = self.df[~self.df['reviewTextStemmed'].isnull()]
-        self.text = self.df['reviewTextStemmed'].values
+        self.df = self.df[~self.df['reviewText'].isnull()]
+        self.df = self.df.reset_index()
+        self.text = self.df['reviewText'].values
         self.labels = self.df['overall'].apply(lambda x: 0. if x <= 2.5 else 1.).values
         if max_len is None:
             self.max_len = max([len(t.split(' ')) for t in self.text])
@@ -50,8 +53,12 @@ class AmazonTextRecurrent(Dataset):
     def __getitem__(self, idx):
         t = self.text[idx]
         label = self.labels[idx]
+
+        if self.preprocessor is not None:
+            t = self.preprocessor(t, stemmer=self.stemmer)
+
         output = text2matrix(t, self.w2v, max_len=self.max_len)
-        dic = {'w2v': output, 'label': torch.Tensor([label]*30), 'text': t}
+        dic = {'w2v': output, 'label': torch.Tensor([float(label)]*30), 'text': t}
         return dic
 
 
@@ -64,7 +71,7 @@ def text2matrix(text, w2v, max_len=None):
     j = 0
     while j < len(text) and i < max_len:
         try:
-            matrix[i, :] = torch.Tensor(w2v.wv[text[j]])
+            matrix[i, :] = torch.Tensor(w2v[text[j]])
             i += 1
         except KeyError:
             pass
@@ -98,3 +105,30 @@ def text2vec(text, w2v, tfidf=None):
     if torch.sum(output) != 0:
         output = output / torch.norm(output)
     return output
+
+
+def split_ids(dataset, test_size=.2, shuffle=True, seed=0):
+    length = len(dataset)
+    indices = list(range(length))
+
+    if shuffle is True:
+        import random
+        random.seed(seed)
+        random.shuffle(indices)
+
+    if type(test_size) is float:
+        split = int(test_size * length)
+    elif type(test_size) is int:
+        split = test_size
+    else:
+        raise ValueError('%s should be an int or a float' % str)
+    return indices[split:], indices[:split]
+
+
+def build_name(string, w2v_size, n_hidden, stemmer):
+    import time
+    if stemmer is None:
+        model_name = 'models/{}_{}_{}_no_stem_{}.model'.format(string, n_hidden, w2v_size, time.strftime('%d%b_%X'))
+    else:
+        model_name = 'models/{}_{}_{}_stem_{}.model'.format(string, n_hidden, w2v_size, time.strftime('%d%b_%X'))
+    return model_name

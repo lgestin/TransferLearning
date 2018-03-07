@@ -13,8 +13,10 @@ emoticons_str = r"""
               [D\)\]\(\]/\\OpP] # Mouth
               )"""
 
+neg = r"\w*n[']?t\b"
 
 emoticon_re = re.compile(r'^' + emoticons_str + '$', re.VERBOSE)
+reg_neg = re.compile(neg)
 
 
 def is_emoji(s, emoticon_re=emoticon_re):
@@ -28,7 +30,7 @@ def is_emoji(s, emoticon_re=emoticon_re):
         return True
 
 
-def textPreprocessing(string, stemmer, charToKeep=string.ascii_lowercase, sWords=set(stopwords.words('english'))):
+def textPreprocessing(string, stemmer=None, charToKeep=string.ascii_lowercase, sWords=set(stopwords.words('english'))):
     '''Cleaning the text
     string: sentence to clean
     stemmer: stemmer to use
@@ -38,18 +40,22 @@ def textPreprocessing(string, stemmer, charToKeep=string.ascii_lowercase, sWords
     string = string.lower().replace('.', ' ')
     new_string = []
     for word in string.split(' '):
-        if word not in sWords:
+        if word not in sWords - set("no not nor".split(' ')):
             w = ''
             for char in word:
                 if char in charToKeep:
                     w += char
             if w != '':
-                new_string += [stemmer.stem(w)]
+                if stemmer is None:
+                    new_string += [w]
+                else:
+                    new_string += [stemmer.stem(w)]
             elif word.isdigit():
                 new_string += ['DIGIT']
             elif is_emoji(word):
                 new_string += [word]
-
+        elif re.match(neg, word):
+            new_string += ['NEG']
     return ' '.join(new_string)
 
 

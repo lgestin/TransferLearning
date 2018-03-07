@@ -5,3 +5,4 @@ test.py
 w2v/
 __pycache__/
 tweets-data/
+data/
